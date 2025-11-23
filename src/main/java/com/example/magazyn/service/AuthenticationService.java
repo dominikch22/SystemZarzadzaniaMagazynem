@@ -6,6 +6,7 @@ import com.example.magazyn.dto.RegisterRequest;
 import com.example.magazyn.entity.Company;
 import com.example.magazyn.entity.Role;
 import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.CompanyRepository;
 import com.example.magazyn.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final CompanyRepository companyRepository;
 
     public AuthResponse register(RegisterRequest request) {
         var user = createUser(request);
@@ -39,12 +41,20 @@ public class AuthenticationService {
             throw new IllegalArgumentException("Użytkownik z adresem email '" + request.getEmail() + "' już istnieje.");
         }
 
+        Company testCompany = companyRepository.findByName("TEST_COMPANY")
+                .orElseGet(() -> {
+                    Company newCompany = new Company();
+                    newCompany.setName("TEST_COMPANY");
+                    return companyRepository.save(newCompany);
+                });
+
         var user = User.builder()
                 .firstname(request.getFirstname())
                 .lastname(request.getLastname())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(Role.USER)
+                .company(testCompany)
                 .build();
 
         return userRepository.save(user);
