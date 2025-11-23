@@ -1,17 +1,18 @@
 package com.example.magazyn.controller;
 
 import com.example.magazyn.dto.CreateProductRequest;
+import com.example.magazyn.entity.Company;
 import com.example.magazyn.entity.Product;
 import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.ProductRepository;
 import com.example.magazyn.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/products")
@@ -31,4 +32,12 @@ public class ProductController {
 
         return ResponseEntity.ok().body(createdProduct);
     }
+
+
+    @GetMapping
+    public ResponseEntity<List<Product>> getAllProducts(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getAllProducts(user));
+    }
+
+
 }

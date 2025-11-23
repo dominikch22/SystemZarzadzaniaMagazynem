@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 public class LocationService {
 
@@ -52,6 +54,14 @@ public class LocationService {
         }
 
         return locationRepository.save(newLocation);
+    }
+
+    public List<Location> getAllLocations(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return locationRepository.findAllByCompany(company);
     }
 
     private void validateHierarchy(LocationType childType, LocationType parentType) {

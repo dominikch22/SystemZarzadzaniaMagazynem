@@ -8,7 +8,7 @@ import com.example.magazyn.repository.CategoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.util.List;
 @Service
 public class CategoryService {
     private final CategoryRepository categoryRepository;
@@ -35,4 +35,13 @@ public class CategoryService {
 
         return categoryRepository.save(category);
     }
+
+    public List<Category> getAllCategories(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return categoryRepository.findAllByCompany(company);
+    }
+
 }

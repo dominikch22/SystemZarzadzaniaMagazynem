@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -52,5 +53,13 @@ public class ProductService {
         }
 
         return productRepository.save(product);
+    }
+
+    public List<Product> getAllProducts(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return productRepository.findAllByCompany(company);
     }
 }
