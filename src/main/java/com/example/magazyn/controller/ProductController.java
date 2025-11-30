@@ -1,16 +1,14 @@
 package com.example.magazyn.controller;
 
 import com.example.magazyn.dto.CreateProductRequest;
-import com.example.magazyn.entity.Company;
+import com.example.magazyn.dto.StockItemLocationDto;
 import com.example.magazyn.entity.Product;
 import com.example.magazyn.entity.User;
-import com.example.magazyn.repository.ProductRepository;
 import com.example.magazyn.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
 
@@ -37,6 +35,11 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<List<Product>> getAllProducts(@AuthenticationPrincipal User user) {
         return ResponseEntity.ok(productService.getAllProducts(user));
+    }
+
+    @GetMapping("/with-stock")
+    public ResponseEntity<List<StockItemLocationDto>> getAllProductsWithQuantityAndLocations(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getAllProductsWithStockDetails(user));
     }
 
 

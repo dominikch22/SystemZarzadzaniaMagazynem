@@ -1,7 +1,11 @@
 package com.example.magazyn.service;
 
 import com.example.magazyn.dto.CreateProductRequest;
-import com.example.magazyn.entity.*;
+import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Product;
+import com.example.magazyn.entity.User;
 import com.example.magazyn.repository.CategoryRepository;
 import com.example.magazyn.repository.LocationRepository;
 import com.example.magazyn.repository.ProductRepository;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -61,5 +66,35 @@ public class ProductService {
             throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
         }
         return productRepository.findAllByCompany(company);
+    }
+
+    @Transactional()
+    public List<StockItemLocationDto> getAllProductsWithStockDetails(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        List<Product> products = productRepository.findAllByCompany(company);
+
+        return products.stream()
+                .map(this::mapToStockItemLocationDto)
+                .collect(Collectors.toList());
+    }
+
+    private StockItemLocationDto mapToStockItemLocationDto(Product product) {
+
+        List<String> locationNames = product.getStockItems().stream()
+                .filter(si -> si.getQuantity() > 0)
+                .map(si -> si.getLocation().getName())
+                .collect(Collectors.toList());
+
+        int totalQuantity = product.getQuantity();
+
+        return StockItemLocationDto.builder()
+                .product(product)
+                .locationNames(locationNames)
+                .quantity(totalQuantity)
+                .build();
     }
 }
