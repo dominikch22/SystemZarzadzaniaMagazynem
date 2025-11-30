@@ -15,22 +15,20 @@ import java.util.Collections;
 public class GlobalCorsConfiguration {
 
     @Bean
-    public FilterRegistrationBean<CorsFilter> corsFilter() {
+    public FilterRegistrationBean<CorsFilter> customCorsFilter() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
-        // Zezwól na wszystko
-        config.setAllowCredentials(false); // Przy "*" musi być false
+        config.setAllowCredentials(false);
         config.setAllowedOrigins(Collections.singletonList("*"));
         config.setAllowedHeaders(Collections.singletonList("*"));
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
         source.registerCorsConfiguration("/**", config);
 
-        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter());
+        CorsFilter filter = new CorsFilter();
 
-        // TO JEST KLUCZOWE: Ustawiamy najwyższy priorytet
-        // Dzięki temu CORS wykona się zanim Spring Security zablokuje żądanie
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(filter);
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return bean;
     }
