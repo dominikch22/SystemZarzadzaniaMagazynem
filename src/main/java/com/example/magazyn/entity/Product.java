@@ -31,9 +31,6 @@ public class Product {
     @Column(name = "dimensions", columnDefinition = "jsonb")
     private Dimensions dimensions;
 
-    @Column(name = "quantity", nullable = false)
-    private int quantity = 0;
-
     @ManyToMany(fetch = FetchType.LAZY, cascade = { CascadeType.PERSIST, CascadeType.MERGE })
     @JoinTable(
             name = "product_categories",
