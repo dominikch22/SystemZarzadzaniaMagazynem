@@ -89,12 +89,11 @@ public class ProductService {
                 .map(si -> si.getLocation().getName())
                 .collect(Collectors.toList());
 
-        int totalQuantity = product.getQuantity();
 
         return StockItemLocationDto.builder()
                 .product(product)
                 .locationNames(locationNames)
-                .quantity(totalQuantity)
+                .quantity(0)
                 .build();
     }
 }

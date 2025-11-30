@@ -81,13 +81,11 @@ public class StockMovementService {
 
         if (request.getType() == StockMovement.MovementType.INBOUND) {
             stockItem.setQuantity(stockItem.getQuantity() + request.getQuantity());
-            product.setQuantity(product.getQuantity() + request.getQuantity());
         } else {
             if (stockItem.getQuantity() < request.getQuantity()) {
                 throw new IllegalStateException("Niewystarczająca ilość towaru w lokalizacji: " + location.getName());
             }
             stockItem.setQuantity(stockItem.getQuantity() - request.getQuantity());
-            product.setQuantity(product.getQuantity() - request.getQuantity());
         }
 
         stockItemRepository.save(stockItem);
