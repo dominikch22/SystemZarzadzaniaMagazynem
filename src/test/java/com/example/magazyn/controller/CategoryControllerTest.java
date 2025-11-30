@@ -1,5 +1,6 @@
 package com.example.magazyn.controller;
 
+import com.example.magazyn.dto.CategoryDto;
 import com.example.magazyn.dto.CreateCategoryRequest;
 import com.example.magazyn.dto.CreateCompanyRequest;
 import com.example.magazyn.dto.RegisterRequest;
@@ -74,14 +75,14 @@ class CategoryControllerTest {
         CreateCategoryRequest request = new CreateCategoryRequest();
         request.setName("Elektronika");
 
-        ResponseEntity<Category> response = categoryController.createCategory(request, testUser);
+        ResponseEntity<CategoryDto> response = categoryController.createCategory(request, testUser);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        Category createdCategory = response.getBody();
+        CategoryDto createdCategory = response.getBody();
         assertNotNull(createdCategory);
         assertNotNull(createdCategory.getId());
         assertEquals("Elektronika", createdCategory.getName());
-        assertEquals(testCompany.getId(), createdCategory.getCompany().getId());
+        assertEquals(testCompany.getId(), createdCategory.getCompanyId());
 
         assertThat(categoryRepository.findAll()).hasSize(1)
                 .first().extracting(Category::getName).isEqualTo("Elektronika");
