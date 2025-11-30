@@ -4056,3 +4056,2388 @@ class MagazynApplicationTests {
 	}
 
 }
+package com.example.magazyn.config;
+
+import com.example.magazyn.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+@RequiredArgsConstructor
+public class ApplicationConfig {
+    private final UserRepository userRepository;
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> userRepository.findByEmail(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+package com.example.magazyn.config;
+
+import org.apache.catalina.filters.CorsFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.Ordered;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.Collections;
+
+//@Configuration
+public class GlobalCorsConfiguration {
+
+    //@Bean
+    public FilterRegistrationBean<CorsFilter> customCorsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+
+        config.setAllowCredentials(false);
+        config.setAllowedOrigins(Collections.singletonList("*"));
+        config.setAllowedHeaders(Collections.singletonList("*"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+
+        source.registerCorsConfiguration("/**", config);
+
+        CorsFilter filter = new CorsFilter();
+
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(filter);
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return bean;
+    }
+}package com.example.magazyn.config;
+
+import com.example.magazyn.filter.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
+
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final AuthenticationProvider authenticationProvider;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .cors(Customizer.withDefaults())
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/v2/api-docs",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/swagger-resources",
+                                "/swagger-resources/**",
+                                "/configuration/ui",
+                                "/configuration/security",
+                                "/swagger-ui/**",
+                                "/webjars/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authenticationProvider(authenticationProvider)
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        configuration.setAllowedOrigins(List.of("*"));
+
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
+
+        configuration.setAllowedHeaders(List.of("*"));
+
+        configuration.setAllowCredentials(false);
+
+        configuration.setExposedHeaders(List.of("Authorization"));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
+}
+package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.AuthRequest;
+import com.example.magazyn.dto.AuthResponse;
+import com.example.magazyn.dto.RegisterRequest;
+import com.example.magazyn.service.AuthenticationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final AuthenticationService service;
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
+        return ResponseEntity.ok(service.register(request));
+    }
+
+    @PostMapping("/authenticate")
+    public ResponseEntity<AuthResponse> authenticate(@RequestBody AuthRequest request) {
+        return ResponseEntity.ok(service.authenticate(request));
+    }
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateCategoryRequest;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.service.CategoryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/categories")
+public class CategoryController {
+
+    private final CategoryService categoryService;
+
+    @Autowired
+    public CategoryController(CategoryService categoryService) {
+        this.categoryService = categoryService;
+    }
+
+    @PostMapping
+    public ResponseEntity<Category> createCategory(
+            @RequestBody CreateCategoryRequest createCategoryRequest,
+            @AuthenticationPrincipal User user) {
+        Category newCategory = categoryService.createCategory(createCategoryRequest, user);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(newCategory);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Category>> getAllCategories(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(categoryService.getAllCategories(user));
+    }
+}
+package com.example.magazyn.controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/companies")
+public class CompanyController {
+}
+package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateLocationRequest;
+import com.example.magazyn.entity.Location;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.service.LocationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/locations")
+public class LocationController {
+
+    private final LocationService locationService;
+
+    @Autowired
+    public LocationController(LocationService locationService) {
+        this.locationService = locationService;
+    }
+
+    @PostMapping
+    public ResponseEntity<Location> createLocation(
+            @RequestBody CreateLocationRequest request,
+            @AuthenticationPrincipal User user) {
+        Location createdLocation = locationService.createLocation(request, user);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdLocation);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Location>> getAllLocations(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(locationService.getAllLocations(user));
+    }
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateProductRequest;
+import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.entity.Product;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/products")
+public class ProductController {
+
+    private final ProductService productService;
+
+    @Autowired
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
+
+    @PostMapping
+    public ResponseEntity<Product> createProduct(@RequestBody CreateProductRequest request,
+                                                 @AuthenticationPrincipal User user) {
+        Product createdProduct = productService.createProduct(request, user);
+
+        return ResponseEntity.ok().body(createdProduct);
+    }
+
+
+    @GetMapping
+    public ResponseEntity<List<Product>> getAllProducts(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getAllProducts(user));
+    }
+
+    @GetMapping("/with-stock")
+    public ResponseEntity<List<StockItemLocationDto>> getAllProductsWithQuantityAndLocations(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getAllProductsWithStockDetails(user));
+    }
+
+
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateStockMovementRequest;
+import com.example.magazyn.entity.StockMovement;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.service.StockMovementService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/movements")
+public class StockMovementController {
+
+    private final StockMovementService stockMovementService;
+
+    @Autowired
+    public StockMovementController(StockMovementService stockMovementService) {
+        this.stockMovementService = stockMovementService;
+    }
+
+    @PostMapping
+    public ResponseEntity<StockMovement> createMovement(
+            @RequestBody CreateStockMovementRequest request,
+            @AuthenticationPrincipal User user) {
+
+        StockMovement movement = stockMovementService.createStockMovement(request, user);
+        return ResponseEntity.ok(movement);
+    }
+}package com.example.magazyn.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class AuthRequest {
+    private String email;
+    private String password;
+}package com.example.magazyn.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class AuthResponse {
+    private String token;
+}package com.example.magazyn.dto;
+
+
+import lombok.Data;
+
+@Data
+public class CreateCategoryRequest {
+    private String name;
+
+}package com.example.magazyn.dto;
+
+import lombok.Data;
+
+@Data
+public class CreateCompanyRequest {
+    private String name;
+}
+package com.example.magazyn.dto;
+
+import com.example.magazyn.model.LocationType;
+import lombok.Data;
+
+@Data
+public class CreateLocationRequest {
+    private String name;
+    private LocationType locationType;
+    private Long parentId;
+}
+package com.example.magazyn.dto;
+
+import com.example.magazyn.model.Dimensions;
+import lombok.Data;
+
+import java.util.Set;
+
+@Data
+public class CreateProductRequest {
+    private String name;
+
+    private Dimensions dimensions;
+
+    private Set<Long> categoryIds;
+}
+package com.example.magazyn.dto;
+
+import com.example.magazyn.entity.StockMovement;
+import lombok.Data;
+
+@Data
+public class CreateStockMovementRequest {
+    private Long productId;
+    private Long locationId;
+    private int quantity;
+    private StockMovement.MovementType type;
+}
+package com.example.magazyn.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class RegisterRequest {
+    private String firstname;
+    private String lastname;
+    private String email;
+    private String password;
+}package com.example.magazyn.dto;
+
+import com.example.magazyn.entity.Product;
+import lombok.Builder;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+@Builder
+public class StockItemLocationDto {
+    private Product product;
+    private List<String> locationNames;
+    private int quantity;
+}package com.example.magazyn.entity;
+
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+@Entity
+@Table(name = "categories")
+public class Category {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, unique = true)
+    private String name;
+
+    @ManyToMany(mappedBy = "categories")
+    @JsonIgnore
+    private List<Product> products;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
+}
+package com.example.magazyn.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
+import lombok.Data;
+
+import java.util.List;
+
+@Entity
+@Table(name = "companies")
+@Data
+public class Company {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, unique = true)
+    private String name;
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<User> users;
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Product> products;
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Location> locations;
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Category> categories;
+}package com.example.magazyn.entity;
+
+
+import com.example.magazyn.model.LocationType;
+import com.example.magazyn.model.Rack;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.ArrayList;
+import java.util.List;
+
+
+@Data
+@Entity
+@Table(name = "locations")
+public class Location {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type", nullable = false)
+    private LocationType locationType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Location parentLocation;
+
+    @OneToMany(mappedBy = "parentLocation", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Location> subLocations = new ArrayList<>();
+
+    @OneToMany(mappedBy = "location", cascade = CascadeType.ALL, orphanRemoval = true)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private List<StockItem> stockItems;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Company company;
+
+
+
+    public void addSubLocation(Location subLocation) {
+        if (subLocations == null) {
+            subLocations = new ArrayList<>();
+        }
+        subLocations.add(subLocation);
+        subLocation.setParentLocation(this);
+    }
+
+    public void removeSubLocation(Location subLocation) {
+        if (subLocations != null) {
+            subLocations.remove(subLocation);
+        }
+        subLocation.setParentLocation(null);
+    }
+}package com.example.magazyn.entity;
+
+
+import com.example.magazyn.model.Dimensions;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Data
+@Entity
+@Table(name = "products")
+public class Product {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "dimensions", columnDefinition = "jsonb")
+    private Dimensions dimensions;
+
+    @Column(name = "quantity", nullable = false)
+    private int quantity = 0;
+
+    @ManyToMany(fetch = FetchType.LAZY, cascade = { CascadeType.PERSIST, CascadeType.MERGE })
+    @JoinTable(
+            name = "product_categories",
+            joinColumns = @JoinColumn(name = "product_id"),
+            inverseJoinColumns = @JoinColumn(name = "category_id")
+    )
+    private Set<Category> categories = new HashSet<>();
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private List<StockItem> stockItems;
+}package com.example.magazyn.entity;
+
+public enum Role {
+    USER,
+    ADMIN
+}package com.example.magazyn.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+
+@Data
+@Entity
+@Table(name = "stock_items")
+public class StockItem {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "product_id", nullable = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Product product;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "location_id", nullable = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Location location;
+
+    @Column(name = "quantity", nullable = false)
+    private int quantity;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Company company;
+}
+package com.example.magazyn.entity;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "stock_movements")
+public class StockMovement {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
+
+    @Column(name = "quantity_change", nullable = false)
+    private int quantityChange;
+
+    @Column(name = "movement_date", nullable = false)
+    private LocalDateTime movementDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private MovementType type;
+
+    public enum MovementType {
+        INBOUND,
+        OUTBOUND
+    }
+
+    @PrePersist
+    public void prePersist() {
+        movementDate = LocalDateTime.now();
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Product getProduct() {
+        return product;
+    }
+
+    public void setProduct(Product product) {
+        this.product = product;
+    }
+
+    public int getQuantityChange() {
+        return quantityChange;
+    }
+
+    public void setQuantityChange(int quantityChange) {
+        this.quantityChange = quantityChange;
+    }
+
+    public LocalDateTime getMovementDate() {
+        return movementDate;
+    }
+
+    public void setMovementDate(LocalDateTime movementDate) {
+        this.movementDate = movementDate;
+    }
+
+    public MovementType getType() {
+        return type;
+    }
+
+    public void setType(MovementType type) {
+        this.type = type;
+    }
+}
+package com.example.magazyn.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "_user")
+public class User implements UserDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    private String firstname;
+    private String lastname;
+
+    @Column(unique = true)
+    private String email;
+
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "company_id", nullable = true)
+    private Company company;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority(role.name()));
+    }
+
+    @Override
+    public String getPassword() {
+        return password;
+    }
+
+    @Override
+    public String getUsername() {
+        return email;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
+    }
+}package com.example.magazyn.filter;
+
+import com.example.magazyn.service.JwtService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private final JwtService jwtService;
+    private final UserDetailsService userDetailsService;
+
+    @Override
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain
+    ) throws ServletException, IOException {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        final String authHeader = request.getHeader("Authorization");
+        final String jwt;
+        final String userEmail;
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        jwt = authHeader.substring(7);
+        userEmail = jwtService.extractUsername(jwt);
+
+        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            if (jwtService.isTokenValid(jwt, userDetails)) {
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                );
+                authToken.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                );
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+        filterChain.doFilter(request, response);
+    }
+}
+package com.example.magazyn;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class MagazynApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MagazynApplication.class, args);
+	}
+
+}
+package com.example.magazyn.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Dimensions {
+
+    private float x;
+    private float y;
+    private float z;
+
+}
+package com.example.magazyn.model;
+
+public enum LocationType {
+    WAREHOUSE,
+    RACK,
+    SHELF
+}package com.example.magazyn.model;
+
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+public class Rack {
+    private String id;
+    private String name;
+    private List<Shelf> shelves;
+}
+package com.example.magazyn.model;
+
+import lombok.Data;
+
+@Data
+public class Shelf {
+    private String id;
+    private String name;
+    private int capacity;
+}
+package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface CategoryRepository extends JpaRepository<Category, Long> {
+    boolean existsByNameAndCompanyId(String name, Long companyId);
+    List<Category> findAllByCompany(Company company);
+}
+package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.Company;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface CompanyRepository extends JpaRepository<Company, Long> {
+    boolean existsByName(String name);
+    Optional<Company> findByName(String name);
+}
+package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Location;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface LocationRepository extends JpaRepository<Location, Long> {
+    Optional<Location> findByName(String name);
+    List<Location> findAllByCompany(Company company);
+}package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Product;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+
+@Repository
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    List<Product> findAllByCompany(Company company);
+
+}package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.StockItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface StockItemRepository extends JpaRepository<StockItem, Long> {
+    Optional<StockItem> findByProductIdAndLocationId(Long productId, Long locationId);
+}
+package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.StockMovement;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface StockMovementRepository extends JpaRepository<StockMovement, Long> {
+}package com.example.magazyn.repository;
+
+import com.example.magazyn.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Integer> {
+    Optional<User> findByEmail(String email);
+}
+package com.example.magazyn.service;
+
+import com.example.magazyn.dto.AuthRequest;
+import com.example.magazyn.dto.AuthResponse;
+import com.example.magazyn.dto.RegisterRequest;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Role;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.CompanyRepository;
+import com.example.magazyn.repository.UserRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class AuthenticationService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AuthenticationManager authenticationManager;
+    private final CompanyRepository companyRepository;
+
+    public AuthResponse register(RegisterRequest request) {
+        var user = createUser(request);
+
+        var jwtToken = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .token(jwtToken)
+                .build();
+    }
+
+    @Transactional
+    public User createUser(RegisterRequest request) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new IllegalArgumentException("Użytkownik z adresem email '" + request.getEmail() + "' już istnieje.");
+        }
+
+        Company testCompany = companyRepository.findByName("TEST_COMPANY")
+                .orElseGet(() -> {
+                    Company newCompany = new Company();
+                    newCompany.setName("TEST_COMPANY");
+                    return companyRepository.save(newCompany);
+                });
+
+        var user = User.builder()
+                .firstname(request.getFirstname())
+                .lastname(request.getLastname())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(Role.USER)
+                .company(testCompany)
+                .build();
+
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User createUser(RegisterRequest request, Company company) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new IllegalArgumentException("Użytkownik z adresem email '" + request.getEmail() + "' już istnieje.");
+        }
+
+        var user = User.builder()
+                .firstname(request.getFirstname())
+                .company(company)
+                .lastname(request.getLastname())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(Role.USER)
+                .build();
+
+        return userRepository.save(user);
+    }
+
+    public AuthResponse authenticate(AuthRequest request) {
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        request.getEmail(),
+                        request.getPassword()
+                )
+        );
+
+        var user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow();
+
+        var jwtToken = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .token(jwtToken)
+                .build();
+    }
+}package com.example.magazyn.service;
+
+import com.example.magazyn.dto.CreateCategoryRequest;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.CategoryRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
+@Service
+public class CategoryService {
+    private final CategoryRepository categoryRepository;
+
+    @Autowired
+    public CategoryService(CategoryRepository categoryRepository) {
+        this.categoryRepository = categoryRepository;
+    }
+
+    @Transactional
+    public Category createCategory(CreateCategoryRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        if (categoryRepository.existsByNameAndCompanyId(request.getName(), company.getId())) {
+            throw new IllegalArgumentException("Kategoria o nazwie '" + request.getName() + "' już istnieje w tej firmie.");
+        }
+
+        Category category = new Category();
+        category.setName(request.getName());
+        category.setCompany(company);
+
+        return categoryRepository.save(category);
+    }
+
+    public List<Category> getAllCategories(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return categoryRepository.findAllByCompany(company);
+    }
+
+}
+package com.example.magazyn.service;
+
+import com.example.magazyn.dto.CreateCompanyRequest;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.repository.CompanyRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CompanyService {
+
+    private final CompanyRepository companyRepository;
+
+    @Autowired
+    public CompanyService(CompanyRepository companyRepository) {
+        this.companyRepository = companyRepository;
+    }
+
+    @Transactional
+    public Company createCompany(CreateCompanyRequest request) {
+        if (companyRepository.existsByName(request.getName())) {
+            throw new IllegalArgumentException("Firma o nazwie '" + request.getName() + "' już istnieje.");
+        }
+
+        Company company = new Company();
+        company.setName(request.getName());
+
+        return companyRepository.save(company);
+    }
+}package com.example.magazyn.service;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import java.security.Key;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+@Service
+public class JwtService {
+    @Value("${application.security.jwt.secret-key}")
+    private String secretKey;
+
+    @Value("${application.security.jwt.expiration}")
+    private long jwtExpiration;
+
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    public String generateToken(UserDetails userDetails) {
+        return generateToken(new HashMap<>(), userDetails);
+    }
+
+    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        return Jwts.builder()
+                .setClaims(extraClaims)
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+    }
+
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSignInKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    private Key getSignInKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+package com.example.magazyn.service;
+
+import com.example.magazyn.dto.CreateLocationRequest;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Location;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.model.LocationType;
+import com.example.magazyn.repository.LocationRepository;
+import jakarta.persistence.EntityNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+public class LocationService {
+
+    private final LocationRepository locationRepository;
+
+    @Autowired
+    public LocationService(LocationRepository locationRepository) {
+        this.locationRepository = locationRepository;
+    }
+
+    @Transactional
+    public Location createLocation(CreateLocationRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        Location newLocation = new Location();
+        newLocation.setName(request.getName());
+        newLocation.setLocationType(request.getLocationType());
+        newLocation.setCompany(company);
+
+        if (request.getParentId() != null) {
+            Location parentLocation = locationRepository.findById(request.getParentId())
+                    .orElseThrow(() -> new EntityNotFoundException("Lokalizacja nadrzędna o ID " + request.getParentId() + " nie została znaleziona."));
+
+            if (!parentLocation.getCompany().getId().equals(company.getId())) {
+                throw new SecurityException("Brak uprawnień do dodawania pod-lokalizacji w tej strukturze.");
+            }
+
+            validateHierarchy(request.getLocationType(), parentLocation.getLocationType());
+
+            newLocation.setParentLocation(parentLocation);
+
+        } else {
+            if (request.getLocationType() != LocationType.WAREHOUSE) {
+                throw new IllegalArgumentException("Tylko lokalizacja typu WAREHOUSE (magazyn) może być utworzona bez lokalizacji nadrzędnej.");
+            }
+        }
+
+        return locationRepository.save(newLocation);
+    }
+
+    public List<Location> getAllLocations(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return locationRepository.findAllByCompany(company);
+    }
+
+    private void validateHierarchy(LocationType childType, LocationType parentType) {
+        switch (childType) {
+            case RACK:
+                if (parentType != LocationType.WAREHOUSE) {
+                    throw new IllegalArgumentException("Regał (RACK) może być utworzony tylko wewnątrz magazynu (WAREHOUSE).");
+                }
+                break;
+            case SHELF:
+                if (parentType != LocationType.RACK) {
+                    throw new IllegalArgumentException("Półka (SHELF) może być utworzona tylko wewnątrz regału (RACK).");
+                }
+                break;
+            case WAREHOUSE:
+                throw new IllegalArgumentException("Magazyn (WAREHOUSE) nie może być pod-lokalizacją.");
+        }
+    }
+}package com.example.magazyn.service;
+
+import com.example.magazyn.dto.CreateProductRequest;
+import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Product;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.CategoryRepository;
+import com.example.magazyn.repository.LocationRepository;
+import com.example.magazyn.repository.ProductRepository;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+public class ProductService {
+    private final ProductRepository productRepository;
+    private final CategoryRepository categoryRepository;
+    private final LocationRepository locationRepository;
+
+    @Autowired
+    public ProductService(ProductRepository productRepository, CategoryRepository categoryRepository, LocationRepository locationRepository) {
+        this.productRepository = productRepository;
+        this.categoryRepository = categoryRepository;
+        this.locationRepository = locationRepository;
+    }
+
+    @Transactional
+    public Product createProduct(CreateProductRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        Product product = new Product();
+        product.setName(request.getName());
+        product.setDimensions(request.getDimensions());
+        product.setCompany(company);
+
+        if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
+            Set<Category> categories = new HashSet<>(categoryRepository.findAllById(request.getCategoryIds()));
+            if (categories.size() != request.getCategoryIds().size()) {
+                throw new EntityNotFoundException("Nie znaleziono jednej lub więcej kategorii.");
+            }
+            for (Category category : categories) {
+                if (!category.getCompany().getId().equals(company.getId())) {
+                    throw new SecurityException("Brak uprawnień do przypisania produktu do kategorii innej firmy.");
+                }
+            }
+            product.setCategories(categories);
+        }
+
+        return productRepository.save(product);
+    }
+
+    public List<Product> getAllProducts(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+        return productRepository.findAllByCompany(company);
+    }
+
+    @Transactional()
+    public List<StockItemLocationDto> getAllProductsWithStockDetails(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        List<Product> products = productRepository.findAllByCompany(company);
+
+        return products.stream()
+                .map(this::mapToStockItemLocationDto)
+                .collect(Collectors.toList());
+    }
+
+    private StockItemLocationDto mapToStockItemLocationDto(Product product) {
+
+        List<String> locationNames = product.getStockItems().stream()
+                .filter(si -> si.getQuantity() > 0)
+                .map(si -> si.getLocation().getName())
+                .collect(Collectors.toList());
+
+        int totalQuantity = product.getQuantity();
+
+        return StockItemLocationDto.builder()
+                .product(product)
+                .locationNames(locationNames)
+                .quantity(totalQuantity)
+                .build();
+    }
+}
+package com.example.magazyn.service;
+
+import com.example.magazyn.dto.CreateStockMovementRequest;
+import com.example.magazyn.entity.*;
+import com.example.magazyn.repository.LocationRepository;
+import com.example.magazyn.repository.ProductRepository;
+import com.example.magazyn.repository.StockItemRepository;
+import com.example.magazyn.repository.StockMovementRepository;
+import jakarta.persistence.EntityNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class StockMovementService {
+
+    private final StockMovementRepository stockMovementRepository;
+    private final StockItemRepository stockItemRepository;
+    private final ProductRepository productRepository;
+    private final LocationRepository locationRepository;
+
+    @Autowired
+    public StockMovementService(StockMovementRepository stockMovementRepository,
+                                StockItemRepository stockItemRepository,
+                                ProductRepository productRepository,
+                                LocationRepository locationRepository) {
+        this.stockMovementRepository = stockMovementRepository;
+        this.stockItemRepository = stockItemRepository;
+        this.productRepository = productRepository;
+        this.locationRepository = locationRepository;
+    }
+
+    @Transactional
+    public StockMovement createStockMovement(CreateStockMovementRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new EntityNotFoundException("Produkt nie znaleziony"));
+
+        if (!product.getCompany().getId().equals(company.getId())) {
+            throw new SecurityException("Brak dostępu do tego produktu.");
+        }
+
+        Location location = locationRepository.findById(request.getLocationId())
+                .orElseThrow(() -> new EntityNotFoundException("Lokalizacja nie znaleziona"));
+
+        if (!location.getCompany().getId().equals(company.getId())) {
+            throw new SecurityException("Brak dostępu do tej lokalizacji.");
+        }
+
+        if (request.getQuantity() <= 0) {
+            throw new IllegalArgumentException("Ilość musi być większa od zera.");
+        }
+
+        updateStockAndProduct(request, product, location, company);
+
+        StockMovement movement = new StockMovement();
+        movement.setProduct(product);
+        movement.setQuantityChange(request.getQuantity());
+        movement.setType(request.getType());
+        return stockMovementRepository.save(movement);
+    }
+
+    private void updateStockAndProduct(CreateStockMovementRequest request, Product product, Location location, Company company) {
+        StockItem stockItem = stockItemRepository.findByProductIdAndLocationId(product.getId(), location.getId())
+                .orElse(null);
+
+        if (stockItem == null) {
+            if (request.getType() == StockMovement.MovementType.OUTBOUND) {
+                throw new IllegalStateException("Nie można wydać towaru. Brak towaru w tej lokalizacji.");
+            }
+            stockItem = new StockItem();
+            stockItem.setProduct(product);
+            stockItem.setLocation(location);
+            stockItem.setCompany(company);
+            stockItem.setQuantity(0);
+        }
+
+        if (request.getType() == StockMovement.MovementType.INBOUND) {
+            stockItem.setQuantity(stockItem.getQuantity() + request.getQuantity());
+            product.setQuantity(product.getQuantity() + request.getQuantity());
+        } else {
+            if (stockItem.getQuantity() < request.getQuantity()) {
+                throw new IllegalStateException("Niewystarczająca ilość towaru w lokalizacji: " + location.getName());
+            }
+            stockItem.setQuantity(stockItem.getQuantity() - request.getQuantity());
+            product.setQuantity(product.getQuantity() - request.getQuantity());
+        }
+
+        stockItemRepository.save(stockItem);
+        productRepository.save(product);
+    }
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.AuthRequest;
+import com.example.magazyn.dto.RegisterRequest;
+import com.example.magazyn.entity.Role;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
+
+@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+class AuthControllerTest {
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @BeforeEach
+    void setUp() {
+        userRepository.deleteAll();
+    }
+
+    @Test
+    void register_shouldCreateUserAndReturnToken() throws Exception {
+        RegisterRequest registerRequest = RegisterRequest.builder()
+                .firstname("Test")
+                .lastname("Test")
+                .email("test.user@example.com")
+                .password("password123")
+                .build();
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
+
+        User savedUser = userRepository.findByEmail("test.user@example.com").orElseThrow();
+        assertThat(savedUser).isNotNull();
+        assertThat(savedUser.getFirstname()).isEqualTo("Test");
+        assertThat(passwordEncoder.matches("password123", savedUser.getPassword())).isTrue();
+    }
+
+    @Test
+    void authenticate_shouldReturnToken_whenCredentialsAreCorrect() throws Exception {
+        User existingUser = User.builder()
+                .firstname("Existing")
+                .lastname("User")
+                .email("existing.user@example.com")
+                .password(passwordEncoder.encode("correct-password"))
+                .role(Role.USER)
+                .build();
+        userRepository.save(existingUser);
+
+        AuthRequest authRequest = AuthRequest.builder()
+                .email("existing.user@example.com")
+                .password("correct-password")
+                .build();
+
+        mockMvc.perform(post("/api/auth/authenticate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(authRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
+    }
+
+    @Test
+    void authenticate_shouldReturnForbidden_whenPasswordIsIncorrect() throws Exception {
+        User existingUser = User.builder()
+                .firstname("Existing")
+                .lastname("User")
+                .email("another.user@example.com")
+                .password(passwordEncoder.encode("correct-password"))
+                .role(Role.USER)
+                .build();
+        userRepository.save(existingUser);
+
+        AuthRequest authRequest = AuthRequest.builder()
+                .email("another.user@example.com")
+                .password("WRONG-password")
+                .build();
+
+        mockMvc.perform(post("/api/auth/authenticate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(authRequest)))
+                .andExpect(status().isForbidden());
+    }
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateCategoryRequest;
+import com.example.magazyn.dto.CreateCompanyRequest;
+import com.example.magazyn.dto.RegisterRequest;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.repository.CategoryRepository;
+import com.example.magazyn.repository.CompanyRepository;
+import com.example.magazyn.repository.UserRepository;
+import com.example.magazyn.service.AuthenticationService;
+import com.example.magazyn.service.CompanyService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@SpringBootTest
+@Transactional
+class CategoryControllerTest {
+
+    @Autowired
+    private CategoryController categoryController;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private CompanyRepository companyRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private CompanyService companyService;
+
+    @Autowired
+    private AuthenticationService authenticationService;
+
+    private User testUser;
+    private Company testCompany;
+
+    @BeforeEach
+    void setUp() {
+        categoryRepository.deleteAll();
+        userRepository.deleteAll();
+        companyRepository.deleteAll();
+
+        CreateCompanyRequest companyRequest = new CreateCompanyRequest();
+        companyRequest.setName("Testowa Firma Kategoria");
+        testCompany = companyService.createCompany(companyRequest);
+
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setLastname("Kowalski");
+        userRequest.setFirstname("Jan");
+        userRequest.setEmail("jan.kowalski@test.com");
+        userRequest.setPassword("password");
+        testUser = authenticationService.createUser(userRequest);
+        testUser.setCompany(testCompany);
+        userRepository.save(testUser);
+    }
+
+    @Test
+    void shouldCreateCategorySuccessfully() {
+        CreateCategoryRequest request = new CreateCategoryRequest();
+        request.setName("Elektronika");
+
+        ResponseEntity<Category> response = categoryController.createCategory(request, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Category createdCategory = response.getBody();
+        assertNotNull(createdCategory);
+        assertNotNull(createdCategory.getId());
+        assertEquals("Elektronika", createdCategory.getName());
+        assertEquals(testCompany.getId(), createdCategory.getCompany().getId());
+
+        assertThat(categoryRepository.findAll()).hasSize(1)
+                .first().extracting(Category::getName).isEqualTo("Elektronika");
+    }
+
+    @Test
+    void shouldThrowExceptionWhenCategoryNameAlreadyExistsInSameCompany() {
+        CreateCategoryRequest request1 = new CreateCategoryRequest();
+        request1.setName("Narzędzia");
+
+        categoryController.createCategory(request1, testUser);
+
+        CreateCategoryRequest request2 = new CreateCategoryRequest();
+        request2.setName("Narzędzia");
+
+        assertThrows(IllegalArgumentException.class, () -> {
+            categoryController.createCategory(request2, testUser);
+        });
+
+        assertThat(categoryRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenUserHasNoCompany() {
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setLastname("Nowak");
+        userRequest.setFirstname("Anna");
+        userRequest.setEmail("anna.nowak@test.com");
+        userRequest.setPassword("password");
+        User userWithoutCompany = authenticationService.createUser(userRequest);
+
+        CreateCategoryRequest request = new CreateCategoryRequest();
+        request.setName("Testowa Kategoria");
+
+        assertThrows(IllegalStateException.class, () -> {
+            categoryController.createCategory(request, userWithoutCompany);
+        });
+
+        assertThat(categoryRepository.findAll()).isEmpty();
+    }
+}package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.CreateCompanyRequest;
+import com.example.magazyn.dto.CreateLocationRequest;
+import com.example.magazyn.dto.RegisterRequest;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Location;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.model.LocationType;
+import com.example.magazyn.repository.CompanyRepository;
+import com.example.magazyn.repository.LocationRepository;
+import com.example.magazyn.repository.UserRepository;
+import com.example.magazyn.service.AuthenticationService;
+import com.example.magazyn.service.CompanyService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
+class LocationControllerTest {
+
+    @Autowired
+    private LocationController locationController;
+
+    @Autowired
+    private LocationRepository locationRepository;
+
+    @Autowired
+    private CompanyRepository companyRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private CompanyService companyService;
+
+    @Autowired
+    private AuthenticationService authenticationService;
+
+    private User testUser;
+    private Company testCompany;
+
+    @BeforeEach
+    void setUp() {
+        locationRepository.deleteAll();
+        userRepository.deleteAll();
+        companyRepository.deleteAll();
+
+        CreateCompanyRequest companyRequest = new CreateCompanyRequest();
+        companyRequest.setName("Testowa Firma");
+        testCompany = companyService.createCompany(companyRequest);
+
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setLastname("lastname");
+        userRequest.setFirstname("firstname");
+        userRequest.setEmail("test@example.com");
+        userRequest.setPassword("password");
+        testUser = authenticationService.createUser(userRequest);
+        testUser.setCompany(testCompany);
+        userRepository.save(testUser);
+    }
+
+    @Test
+    void shouldCreateWarehouseSuccessfully() {
+        CreateLocationRequest request = new CreateLocationRequest();
+        request.setName("Magazyn Centralny");
+        request.setLocationType(LocationType.WAREHOUSE);
+
+        ResponseEntity<Location> response = locationController.createLocation(request, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Location createdLocation = response.getBody();
+        assertNotNull(createdLocation);
+        assertNotNull(createdLocation.getId());
+        assertEquals("Magazyn Centralny", createdLocation.getName());
+        assertEquals(LocationType.WAREHOUSE, createdLocation.getLocationType());
+        assertThat(createdLocation.getParentLocation()).isNull();
+
+        assertThat(locationRepository.findAll()).hasSize(1)
+                .first().extracting(Location::getName).isEqualTo("Magazyn Centralny");
+    }
+
+    @Test
+    void shouldCreateRackSuccessfully() {
+        Location warehouse = new Location();
+        warehouse.setName("Magazyn Centralny");
+        warehouse.setLocationType(LocationType.WAREHOUSE);
+        warehouse.setCompany(testCompany);
+        locationRepository.save(warehouse);
+
+        CreateLocationRequest rackRequest = new CreateLocationRequest();
+        rackRequest.setName("Regał A1");
+        rackRequest.setLocationType(LocationType.RACK);
+        rackRequest.setParentId(warehouse.getId());
+
+        ResponseEntity<Location> response = locationController.createLocation(rackRequest, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Location createdRack = response.getBody();
+        assertNotNull(createdRack);
+        assertEquals("Regał A1", createdRack.getName());
+        assertEquals(LocationType.RACK, createdRack.getLocationType());
+        assertNotNull(createdRack.getParentLocation());
+        assertEquals(warehouse.getId(), createdRack.getParentLocation().getId());
+
+        Location savedRack = locationRepository.findByName("Regał A1").orElseThrow();
+        assertThat(savedRack.getParentLocation()).isNotNull();
+        assertThat(savedRack.getParentLocation().getId()).isEqualTo(warehouse.getId());
+    }
+
+    @Test
+    void shouldCreateShelfSuccessfully() {
+        Location warehouse = new Location();
+        warehouse.setName("Magazyn Centralny");
+        warehouse.setLocationType(LocationType.WAREHOUSE);
+        warehouse.setCompany(testCompany);
+        locationRepository.save(warehouse);
+
+        Location rack = new Location();
+        rack.setName("Regał A1");
+        rack.setLocationType(LocationType.RACK);
+        rack.setCompany(testCompany);
+        rack.setParentLocation(warehouse);
+        locationRepository.save(rack);
+
+        CreateLocationRequest shelfRequest = new CreateLocationRequest();
+        shelfRequest.setName("Półka 3");
+        shelfRequest.setLocationType(LocationType.SHELF);
+        shelfRequest.setParentId(rack.getId());
+
+        ResponseEntity<Location> response = locationController.createLocation(shelfRequest, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Location createdShelf = response.getBody();
+        assertNotNull(createdShelf);
+        assertEquals("Półka 3", createdShelf.getName());
+        assertEquals(LocationType.SHELF, createdShelf.getLocationType());
+        assertNotNull(createdShelf.getParentLocation());
+        assertEquals(rack.getId(), createdShelf.getParentLocation().getId());
+
+        Location savedShelf = locationRepository.findByName("Półka 3").orElseThrow();
+        assertThat(savedShelf.getParentLocation()).isNotNull();
+        assertThat(savedShelf.getParentLocation().getId()).isEqualTo(rack.getId());
+    }
+}
+
+package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.*;
+import com.example.magazyn.entity.Category;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Product;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.model.Dimensions;
+import com.example.magazyn.repository.CategoryRepository;
+import com.example.magazyn.repository.CompanyRepository;
+import com.example.magazyn.repository.ProductRepository;
+import com.example.magazyn.repository.UserRepository;
+import com.example.magazyn.service.AuthenticationService;
+import com.example.magazyn.service.CategoryService;
+import com.example.magazyn.service.CompanyService;
+
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import jakarta.persistence.EntityNotFoundException;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@SpringBootTest
+@Transactional
+class ProductControllerTest {
+
+    @Autowired
+    private ProductController productController;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private CompanyRepository companyRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private CompanyService companyService;
+
+    @Autowired
+    private AuthenticationService authenticationService;
+
+    @Autowired
+    private CategoryService categoryService;
+
+    private User testUser;
+    private Company testCompany;
+    private Category testCategory;
+
+    @BeforeEach
+    void setUp() {
+        productRepository.deleteAll();
+        categoryRepository.deleteAll();
+        userRepository.deleteAll();
+        companyRepository.deleteAll();
+
+        CreateCompanyRequest companyRequest = new CreateCompanyRequest();
+        companyRequest.setName("Testowa Firma Produkt");
+        testCompany = companyService.createCompany(companyRequest);
+
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setLastname("Smith");
+        userRequest.setFirstname("John");
+        userRequest.setEmail("john.smith@test.com");
+        userRequest.setPassword("password");
+        testUser = authenticationService.createUser(userRequest, testCompany);
+
+        CreateCategoryRequest categoryRequest = new CreateCategoryRequest();
+        categoryRequest.setName("Narzędzia");
+        testCategory = categoryService.createCategory(categoryRequest, testUser);
+    }
+
+    @Test
+    void shouldCreateProductSuccessfully() {
+        CreateProductRequest request = new CreateProductRequest();
+        request.setName("Młotek");
+        request.setDimensions(new Dimensions(10.0f, 3.0f, 30.0f));
+        request.setCategoryIds(Collections.singleton(testCategory.getId()));
+
+        ResponseEntity<Product> response = productController.createProduct(request, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Product createdProduct = response.getBody();
+        assertNotNull(createdProduct);
+        assertNotNull(createdProduct.getId());
+        assertEquals("Młotek", createdProduct.getName());
+        assertEquals(testCompany.getId(), createdProduct.getCompany().getId());
+        assertEquals(1, createdProduct.getCategories().size());
+        assertThat(createdProduct.getCategories()).extracting("id").contains(testCategory.getId());
+        assertNotNull(createdProduct.getDimensions());
+        assertEquals(10.0f, createdProduct.getDimensions().getX());
+
+        assertThat(productRepository.findAll()).hasSize(1)
+                .first().extracting(Product::getName).isEqualTo("Młotek");
+    }
+
+    @Test
+    void shouldCreateProductWithoutCategoriesSuccessfully() {
+        CreateProductRequest request = new CreateProductRequest();
+        request.setName("Śrubokręt");
+        request.setDimensions(new Dimensions(2.0f, 2.0f, 15.0f));
+        request.setCategoryIds(null);
+
+        ResponseEntity<Product> response = productController.createProduct(request, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Product createdProduct = response.getBody();
+        assertNotNull(createdProduct);
+        assertEquals("Śrubokręt", createdProduct.getName());
+        assertThat(createdProduct.getCategories()).isEmpty();
+
+        assertThat(productRepository.findAll()).hasSize(1)
+                .first().extracting(Product::getName).isEqualTo("Śrubokręt");
+    }
+
+    @Test
+    void shouldThrowExceptionWhenUserHasNoCompany() {
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setLastname("Nowak");
+        userRequest.setFirstname("Anna");
+        userRequest.setEmail("anna.nowak@test.com");
+        userRequest.setPassword("password");
+        User userWithoutCompany = authenticationService.createUser(userRequest);
+
+        CreateProductRequest request = new CreateProductRequest();
+        request.setName("Produkt bez firmy");
+        request.setDimensions(new Dimensions(1.0f, 1.0f, 1.0f));
+
+        assertThrows(IllegalStateException.class, () -> {
+            productController.createProduct(request, userWithoutCompany);
+        });
+
+        assertThat(productRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void shouldThrowExceptionWhenCategoriesNotFound() {
+        Set<Long> nonExistentCategoryIds = new HashSet<>();
+        nonExistentCategoryIds.add(999L);
+        nonExistentCategoryIds.add(testCategory.getId());
+
+        CreateProductRequest request = new CreateProductRequest();
+        request.setName("Produkt z błędną kategorią");
+        request.setDimensions(new Dimensions(5.0f, 5.0f, 5.0f));
+        request.setCategoryIds(nonExistentCategoryIds);
+
+        assertThrows(EntityNotFoundException.class, () -> {
+            productController.createProduct(request, testUser);
+        });
+
+        assertThat(productRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void shouldThrowSecurityExceptionWhenCategoryFromDifferentCompany() {
+        CreateCompanyRequest otherCompanyRequest = new CreateCompanyRequest();
+        otherCompanyRequest.setName("Inna Firma");
+        Company otherCompany = companyService.createCompany(otherCompanyRequest);
+
+        RegisterRequest otherUserRequest = new RegisterRequest();
+        otherUserRequest.setLastname("Other");
+        otherUserRequest.setFirstname("User");
+        otherUserRequest.setEmail("other.user@test.com");
+        otherUserRequest.setPassword("password");
+        User otherUser = authenticationService.createUser(otherUserRequest, otherCompany);
+
+        CreateCategoryRequest otherCategoryRequest = new CreateCategoryRequest();
+        otherCategoryRequest.setName("Kategoria Innej Firmy");
+        Category otherCategory = categoryService.createCategory(otherCategoryRequest, otherUser);
+
+        CreateProductRequest request = new CreateProductRequest();
+        request.setName("Produkt z kategorią innej firmy");
+        request.setDimensions(new Dimensions(1.0f, 1.0f, 1.0f));
+        request.setCategoryIds(Collections.singleton(otherCategory.getId()));
+
+        assertThrows(SecurityException.class, () -> {
+            productController.createProduct(request, testUser);
+        });
+
+        assertThat(productRepository.findAll()).isEmpty();
+    }
+}
+package com.example.magazyn.controller;
+
+import com.example.magazyn.dto.*;
+import com.example.magazyn.entity.*;
+import com.example.magazyn.model.Dimensions;
+import com.example.magazyn.model.LocationType;
+import com.example.magazyn.repository.*;
+import com.example.magazyn.service.*;
+import jakarta.persistence.EntityNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collections;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@SpringBootTest
+@Transactional
+class StockMovementControllerTest {
+
+    @Autowired
+    private StockMovementController stockMovementController;
+
+    @Autowired
+    private CompanyService companyService;
+
+    @Autowired
+    private AuthenticationService authenticationService;
+
+    @Autowired
+    private LocationService locationService;
+
+    @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private StockItemRepository stockItemRepository;
+
+    @Autowired
+    private StockMovementRepository stockMovementRepository;
+
+    @Autowired
+    private LocationRepository locationRepository;
+
+    @Autowired
+    private CompanyController companyRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    private User testUser;
+    private Product testProduct;
+    private Location testLocation;
+
+    @BeforeEach
+    void setUp() {
+        stockMovementRepository.deleteAll();
+        stockItemRepository.deleteAll();
+        productRepository.deleteAll();
+        locationRepository.deleteAll();
+        userRepository.deleteAll();
+        companyRepository.deleteAll();
+
+        CreateCompanyRequest companyRequest = new CreateCompanyRequest();
+        companyRequest.setName("Logistics Pro");
+        Company testCompany = companyService.createCompany(companyRequest);
+
+        RegisterRequest userRequest = new RegisterRequest();
+        userRequest.setFirstname("Adam");
+        userRequest.setLastname("Manager");
+        userRequest.setEmail("adam@logistics.pro");
+        userRequest.setPassword("securePass123");
+        testUser = authenticationService.createUser(userRequest, testCompany);
+
+        CreateLocationRequest locationRequest = new CreateLocationRequest();
+        locationRequest.setName("Magazyn Główny");
+        locationRequest.setLocationType(LocationType.WAREHOUSE);
+        testLocation = locationService.createLocation(locationRequest, testUser);
+
+        CreateProductRequest productRequest = new CreateProductRequest();
+        productRequest.setName("Laptop Dell");
+        productRequest.setDimensions(new Dimensions(30f, 20f, 2f));
+        productRequest.setCategoryIds(Collections.emptySet());
+        testProduct = productService.createProduct(productRequest, testUser);
+    }
+
+    @Test
+    void shouldProcessInboundMovementSuccessfully() {
+        CreateStockMovementRequest request = new CreateStockMovementRequest();
+        request.setProductId(testProduct.getId());
+        request.setLocationId(testLocation.getId());
+        request.setQuantity(10);
+        request.setType(StockMovement.MovementType.INBOUND);
+
+        ResponseEntity<StockMovement> response = stockMovementController.createMovement(request, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        StockMovement movement = response.getBody();
+        assertThat(movement).isNotNull();
+        assertThat(movement.getQuantityChange()).isEqualTo(10);
+        assertThat(movement.getType()).isEqualTo(StockMovement.MovementType.INBOUND);
+
+        StockItem stockItem = stockItemRepository.findByProductIdAndLocationId(testProduct.getId(), testLocation.getId())
+                .orElseThrow();
+        assertThat(stockItem.getQuantity()).isEqualTo(10);
+
+        Product updatedProduct = productRepository.findById(testProduct.getId()).orElseThrow();
+        assertThat(updatedProduct.getQuantity()).isEqualTo(10);
+
+        assertThat(stockMovementRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void shouldProcessOutboundMovementSuccessfully() {
+        CreateStockMovementRequest inboundRequest = new CreateStockMovementRequest();
+        inboundRequest.setProductId(testProduct.getId());
+        inboundRequest.setLocationId(testLocation.getId());
+        inboundRequest.setQuantity(50);
+        inboundRequest.setType(StockMovement.MovementType.INBOUND);
+        stockMovementController.createMovement(inboundRequest, testUser);
+
+        CreateStockMovementRequest outboundRequest = new CreateStockMovementRequest();
+        outboundRequest.setProductId(testProduct.getId());
+        outboundRequest.setLocationId(testLocation.getId());
+        outboundRequest.setQuantity(20);
+        outboundRequest.setType(StockMovement.MovementType.OUTBOUND);
+
+        ResponseEntity<StockMovement> response = stockMovementController.createMovement(outboundRequest, testUser);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().getQuantityChange()).isEqualTo(20);
+        assertThat(response.getBody().getType()).isEqualTo(StockMovement.MovementType.OUTBOUND);
+
+        StockItem stockItem = stockItemRepository.findByProductIdAndLocationId(testProduct.getId(), testLocation.getId())
+                .orElseThrow();
+        assertThat(stockItem.getQuantity()).isEqualTo(30);
+
+        Product updatedProduct = productRepository.findById(testProduct.getId()).orElseThrow();
+        assertThat(updatedProduct.getQuantity()).isEqualTo(30);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenInsufficientStockForOutbound() {
+        CreateStockMovementRequest inboundRequest = new CreateStockMovementRequest();
+        inboundRequest.setProductId(testProduct.getId());
+        inboundRequest.setLocationId(testLocation.getId());
+        inboundRequest.setQuantity(5);
+        inboundRequest.setType(StockMovement.MovementType.INBOUND);
+        stockMovementController.createMovement(inboundRequest, testUser);
+
+        CreateStockMovementRequest outboundRequest = new CreateStockMovementRequest();
+        outboundRequest.setProductId(testProduct.getId());
+        outboundRequest.setLocationId(testLocation.getId());
+        outboundRequest.setQuantity(10);
+        outboundRequest.setType(StockMovement.MovementType.OUTBOUND);
+
+        assertThrows(IllegalStateException.class, () -> {
+            stockMovementController.createMovement(outboundRequest, testUser);
+        });
+
+        StockItem stockItem = stockItemRepository.findByProductIdAndLocationId(testProduct.getId(), testLocation.getId()).orElseThrow();
+        assertThat(stockItem.getQuantity()).isEqualTo(5);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenUserAccessesResourceFromDifferentCompany() {
+        CreateCompanyRequest otherCompanyRequest = new CreateCompanyRequest();
+        otherCompanyRequest.setName("Competitor Inc.");
+        Company otherCompany = companyService.createCompany(otherCompanyRequest);
+
+        RegisterRequest otherUserRequest = new RegisterRequest();
+        otherUserRequest.setFirstname("Spy");
+        otherUserRequest.setLastname("User");
+        otherUserRequest.setEmail("spy@competitor.com");
+        otherUserRequest.setPassword("password");
+        User otherUser = authenticationService.createUser(otherUserRequest, otherCompany);
+
+        CreateProductRequest otherProductRequest = new CreateProductRequest();
+        otherProductRequest.setName("Alien Tech");
+        otherProductRequest.setDimensions(new Dimensions(10f, 10f, 10f));
+        Product otherProduct = productService.createProduct(otherProductRequest, otherUser);
+
+        CreateStockMovementRequest request = new CreateStockMovementRequest();
+        request.setProductId(otherProduct.getId());
+        request.setLocationId(testLocation.getId());
+        request.setQuantity(5);
+        request.setType(StockMovement.MovementType.INBOUND);
+
+        assertThrows(SecurityException.class, () -> {
+            stockMovementController.createMovement(request, testUser);
+        });
+
+        assertThat(stockItemRepository.findByProductIdAndLocationId(otherProduct.getId(), testLocation.getId()))
+                .isEmpty();
+    }
+
+    @Test
+    void shouldThrowExceptionWhenProductNotFound() {
+        CreateStockMovementRequest request = new CreateStockMovementRequest();
+        request.setProductId(9999L);
+        request.setLocationId(testLocation.getId());
+        request.setQuantity(5);
+        request.setType(StockMovement.MovementType.INBOUND);
+
+        assertThrows(EntityNotFoundException.class, () -> {
+            stockMovementController.createMovement(request, testUser);
+        });
+    }
+}package com.example.magazyn;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class MagazynApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}

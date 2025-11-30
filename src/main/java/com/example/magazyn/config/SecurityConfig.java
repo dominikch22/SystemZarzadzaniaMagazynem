@@ -59,19 +59,14 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Zezwól na każdy origin
         configuration.setAllowedOrigins(List.of("*"));
 
-        // Zezwól na wszystkie metody
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
 
-        // Zezwól na wszystkie nagłówki (w tym Authorization i Content-Type)
         configuration.setAllowedHeaders(List.of("*"));
 
-        // Przy allowedOrigins("*") to musi być false
         configuration.setAllowCredentials(false);
 
-        // Wystawianie nagłówków (opcjonalnie, pomaga przy debugowaniu)
         configuration.setExposedHeaders(List.of("Authorization"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

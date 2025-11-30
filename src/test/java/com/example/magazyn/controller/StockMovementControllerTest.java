@@ -52,7 +52,7 @@ class StockMovementControllerTest {
     private LocationRepository locationRepository;
 
     @Autowired
-    private CompanyRepository companyRepository;
+    private CompanyController companyRepository;
 
     @Autowired
     private UserRepository userRepository;
