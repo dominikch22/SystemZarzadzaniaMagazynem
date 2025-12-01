@@ -9,9 +9,10 @@ import com.example.magazyn.entity.User;
 import com.example.magazyn.repository.CategoryRepository;
 import com.example.magazyn.repository.LocationRepository;
 import com.example.magazyn.repository.ProductRepository;
+import com.example.magazyn.repository.StockItemRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
@@ -20,17 +21,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@AllArgsConstructor
 public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
+    private final StockItemRepository stockItemRepository;
 
-    @Autowired
-    public ProductService(ProductRepository productRepository, CategoryRepository categoryRepository, LocationRepository locationRepository) {
-        this.productRepository = productRepository;
-        this.categoryRepository = categoryRepository;
-        this.locationRepository = locationRepository;
-    }
 
     @Transactional
     public Product createProduct(CreateProductRequest request, User user) {
@@ -83,17 +80,14 @@ public class ProductService {
     }
 
     private StockItemLocationDto mapToStockItemLocationDto(Product product) {
+        Integer totalQuantity = stockItemRepository.sumQuantityByProductId(product.getId());
 
-        List<String> locationNames = product.getStockItems().stream()
-                .filter(si -> si.getQuantity() > 0)
-                .map(si -> si.getLocation().getName())
-                .collect(Collectors.toList());
-
+        List<String> locationNames = stockItemRepository.findLocationNamesByProductId(product.getId());
 
         return StockItemLocationDto.builder()
                 .product(product)
                 .locationNames(locationNames)
-                .quantity(0)
+                .quantity(totalQuantity != null ? totalQuantity : 0)
                 .build();
     }
 }
