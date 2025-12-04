@@ -2,6 +2,7 @@ package com.example.magazyn.controller;
 
 import com.example.magazyn.dto.CreateProductRequest;
 import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.dto.UpdateProductRequest;
 import com.example.magazyn.entity.Product;
 import com.example.magazyn.entity.User;
 import com.example.magazyn.service.ProductService;
@@ -29,6 +30,14 @@ public class ProductController {
         Product createdProduct = productService.createProduct(request, user);
 
         return ResponseEntity.ok().body(createdProduct);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Product> updateProduct(@PathVariable Long id,
+                                                 @RequestBody UpdateProductRequest request,
+                                                 @AuthenticationPrincipal User user) {
+        Product updatedProduct = productService.updateProduct(id, request, user);
+        return ResponseEntity.ok(updatedProduct);
     }
 
 

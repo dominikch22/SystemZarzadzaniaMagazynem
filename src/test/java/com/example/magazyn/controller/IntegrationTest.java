@@ -154,6 +154,7 @@ class IntegrationTest {
         movementRequest.setQuantity(quantity);
         movementRequest.setType(StockMovement.MovementType.INBOUND);
 
+        String test = objectMapper.writeValueAsString(movementRequest);
         mockMvc.perform(post(MOVEMENT_URL)
                         .header("Authorization", "Bearer " + jwtToken)
                         .contentType(MediaType.APPLICATION_JSON)

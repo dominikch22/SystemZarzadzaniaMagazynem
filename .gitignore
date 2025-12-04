@@ -35,6 +35,6 @@ out/
 
 ### VS Code ###
 .vscode/
-
+output.txt
 
 /src/main/resources/secret.properties

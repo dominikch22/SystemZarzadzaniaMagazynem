@@ -2,6 +2,7 @@ package com.example.magazyn.service;
 
 import com.example.magazyn.dto.CreateProductRequest;
 import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.dto.UpdateProductRequest;
 import com.example.magazyn.entity.Category;
 import com.example.magazyn.entity.Company;
 import com.example.magazyn.entity.Product;
@@ -52,6 +53,46 @@ public class ProductService {
                 }
             }
             product.setCategories(categories);
+        }
+
+        return productRepository.save(product);
+    }
+
+    @Transactional
+    public Product updateProduct(Long productId, UpdateProductRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Produkt o ID " + productId + " nie został znaleziony."));
+
+        if (!product.getCompany().getId().equals(company.getId())) {
+            throw new SecurityException("Brak uprawnień do edycji tego produktu.");
+        }
+
+        if (request.getName() != null) {
+            product.setName(request.getName());
+        }
+        if (request.getDimensions() != null) {
+            product.setDimensions(request.getDimensions());
+        }
+
+        if (request.getCategoryIds() != null) {
+            product.getCategories().clear();
+            if (!request.getCategoryIds().isEmpty()) {
+                Set<Category> newCategories = new HashSet<>(categoryRepository.findAllById(request.getCategoryIds()));
+                if (newCategories.size() != request.getCategoryIds().size()) {
+                    throw new EntityNotFoundException("Nie znaleziono jednej lub więcej kategorii do przypisania.");
+                }
+                for (Category category : newCategories) {
+                    if (!category.getCompany().getId().equals(company.getId())) {
+                        throw new SecurityException("Brak uprawnień do przypisania produktu do kategorii innej firmy.");
+                    }
+                }
+                product.setCategories(newCategories);
+            }
         }
 
         return productRepository.save(product);
