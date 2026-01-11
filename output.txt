@@ -211,6 +211,54 @@ public class SecurityConfig {
 }
 package com.example.magazyn.controller;
 
+import com.example.magazyn.entity.Alert;
+import com.example.magazyn.entity.User;
+import com.example.magazyn.service.AlertService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/alerts")
+@RequiredArgsConstructor
+public class AlertController {
+
+    private final AlertService alertService;
+
+    @GetMapping
+    public ResponseEntity<List<Alert>> getUnreadAlerts(@AuthenticationPrincipal User user) {
+        if (user.getCompany() == null) {
+            return ResponseEntity.ok(List.of());
+        }
+        List<Alert> unreadAlerts = alertService.getUnreadAlertsForCompany(user.getCompany());
+        return ResponseEntity.ok(unreadAlerts);
+    }
+
+    @PatchMapping("/{id}/read")
+    public ResponseEntity<Void> markAlertAsRead(@PathVariable Long id, @AuthenticationPrincipal User user) {
+        if (user.getCompany() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            alertService.markAlertAsRead(id, user.getCompany());
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PostMapping("/generate")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<Void> forceGenerateAlerts(@AuthenticationPrincipal User user) {
+        alertService.checkAndGenerateAllAlerts();
+        return ResponseEntity.accepted().build();
+    }
+}package com.example.magazyn.controller;
+
 import com.example.magazyn.dto.AuthRequest;
 import com.example.magazyn.dto.AuthResponse;
 import com.example.magazyn.dto.RegisterRequest;
@@ -358,13 +406,16 @@ public class LocationController {
     }
 }package com.example.magazyn.controller;
 
+import com.example.magazyn.dto.BestSellingProductsReportDto;
 import com.example.magazyn.dto.CreateProductRequest;
 import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.dto.UpdateProductRequest;
 import com.example.magazyn.entity.Product;
 import com.example.magazyn.entity.User;
 import com.example.magazyn.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -389,6 +440,14 @@ public class ProductController {
         return ResponseEntity.ok().body(createdProduct);
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<Product> updateProduct(@PathVariable Long id,
+                                                 @RequestBody UpdateProductRequest request,
+                                                 @AuthenticationPrincipal User user) {
+        Product updatedProduct = productService.updateProduct(id, request, user);
+        return ResponseEntity.ok(updatedProduct);
+    }
+
 
     @GetMapping
     public ResponseEntity<List<Product>> getAllProducts(@AuthenticationPrincipal User user) {
@@ -400,6 +459,11 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProductsWithStockDetails(user));
     }
 
+    @GetMapping("/best-selling")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<BestSellingProductsReportDto> getBestSellingReport(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getTopSellingProductsLastMonth(user));
+    }
 
 }package com.example.magazyn.controller;
 
@@ -470,6 +534,30 @@ import lombok.NoArgsConstructor;
 public class AuthResponse {
     private String token;
 }package com.example.magazyn.dto;
+
+
+import com.example.magazyn.entity.Product;
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class BestSellingItemDto {
+    private Product product;
+    private Long quantitySold;
+}package com.example.magazyn.dto;
+
+import lombok.Builder;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+@Builder
+public class BestSellingProductsReportDto {
+    private List<BestSellingItemDto> bestSellingProducts;
+}
+package com.example.magazyn.dto;
 
 import lombok.Builder;
 import lombok.Data;
@@ -565,6 +653,55 @@ public class StockItemLocationDto {
     private Product product;
     private List<String> locationNames;
     private int quantity;
+}package com.example.magazyn.dto;
+
+import com.example.magazyn.model.Dimensions;
+import lombok.Data;
+
+import java.util.Set;
+
+@Data
+public class UpdateProductRequest {
+    private String name;
+    private Dimensions dimensions;
+    private Set<Long> categoryIds;
+}package com.example.magazyn.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "alerts")
+public class Alert {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private AlertType type;
+
+    @Column(name = "message", nullable = false, length = 500)
+    private String message;
+
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp = LocalDateTime.now();
+
+    @Column(name = "is_read", nullable = false)
+    private boolean isRead = false;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
+    public enum AlertType {
+        LOW_STOCK,
+        EXPIRY_WARNING
+    }
 }package com.example.magazyn.entity;
 
 
@@ -822,6 +959,7 @@ public class StockMovement {
     @Column(name = "type", nullable = false)
     private MovementType type;
 
+
     public enum MovementType {
         INBOUND,
         OUTBOUND
@@ -1015,8 +1153,10 @@ package com.example.magazyn;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableScheduling
 public class MagazynApplication {
 
 	public static void main(String[] args) {
@@ -1089,6 +1229,19 @@ public class Shelf {
     private int capacity;
 }
 package com.example.magazyn.repository;
+
+
+import com.example.magazyn.entity.Alert;
+import com.example.magazyn.entity.Company;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface AlertRepository extends JpaRepository<Alert, Long> {
+    List<Alert> findByCompanyAndIsReadOrderByTimestampDesc(Company company, boolean isRead);
+}package com.example.magazyn.repository;
 
 import com.example.magazyn.entity.Category;
 import com.example.magazyn.entity.Company;
@@ -1166,11 +1319,24 @@ public interface StockItemRepository extends JpaRepository<StockItem, Long> {
 package com.example.magazyn.repository;
 
 import com.example.magazyn.entity.StockMovement;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Repository
 public interface StockMovementRepository extends JpaRepository<StockMovement, Long> {
+    @Query("SELECT sm.product, SUM(sm.quantityChange) as totalSold " +
+            "FROM StockMovement sm " +
+            "WHERE sm.type = 'OUTBOUND' " +
+            "AND sm.movementDate >= :startDate " +
+            "GROUP BY sm.product " +
+            "ORDER BY totalSold DESC")
+    List<Object[]> findTopSellingProducts(@Param("startDate") LocalDateTime startDate, Pageable pageable);
 }package com.example.magazyn.repository;
 
 import com.example.magazyn.entity.User;
@@ -1183,7 +1349,101 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByEmail(String email);
 }
-package com.example.magazyn.service;
+package com.example.magazyn.scheduler;
+
+import com.example.magazyn.service.AlertService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class AlertScheduler {
+
+    private final AlertService alertService;
+
+    @Scheduled(cron = "0 0 3 * * *")
+    public void scheduledAlertCheck() {
+        log.info("Scheduler uruchamia sprawdzanie alertów...");
+        alertService.checkAndGenerateAllAlerts();
+        log.info("Scheduler zakończył sprawdzanie alertów.");
+    }
+}package com.example.magazyn.service;
+
+import com.example.magazyn.entity.Alert;
+import com.example.magazyn.entity.Company;
+import com.example.magazyn.entity.Product;
+import com.example.magazyn.repository.AlertRepository;
+import com.example.magazyn.repository.CompanyRepository;
+import com.example.magazyn.repository.ProductRepository;
+import com.example.magazyn.repository.StockItemRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class AlertService {
+
+    private final AlertRepository alertRepository;
+    private final ProductRepository productRepository;
+    private final StockItemRepository stockItemRepository;
+    private final CompanyRepository companyRepository;
+
+    private static final int LOW_STOCK_THRESHOLD = 10;
+
+    @Transactional(readOnly = true)
+    public List<Alert> getUnreadAlertsForCompany(Company company) {
+        return alertRepository.findByCompanyAndIsReadOrderByTimestampDesc(company, false);
+    }
+
+    @Transactional
+    public void markAlertAsRead(Long alertId, Company company) {
+        alertRepository.findById(alertId)
+                .filter(alert -> alert.getCompany().getId().equals(company.getId()))
+                .ifPresent(alert -> {
+                    alert.setRead(true);
+                    alertRepository.save(alert);
+                });
+    }
+
+    @Transactional
+    public void checkAndGenerateAllAlerts() {
+        List<Company> companies = companyRepository.findAll();
+        for (Company company : companies) {
+            checkLowStockAlerts(company);
+        }
+    }
+
+    private void checkLowStockAlerts(Company company) {
+        List<Product> products = productRepository.findAllByCompany(company);
+        for (Product product : products) {
+            Integer totalQuantity = stockItemRepository.sumQuantityByProductId(product.getId());
+            int currentStock = (totalQuantity != null) ? totalQuantity : 0;
+
+            if (currentStock > 0 && currentStock <= LOW_STOCK_THRESHOLD) {
+                String msg = String.format("Niski stan magazynowy dla produktu '%s' (ID: %d). Aktualna ilość: %d (Próg: %d).",
+                        product.getName(), product.getId(), currentStock, LOW_STOCK_THRESHOLD);
+                createAndSaveAlert(Alert.AlertType.LOW_STOCK, msg, company);
+            }
+        }
+    }
+
+    private void createAndSaveAlert(Alert.AlertType type, String message, Company company) {
+        Alert alert = new Alert();
+        alert.setType(type);
+        alert.setMessage(message);
+        alert.setCompany(company);
+        alert.setTimestamp(LocalDateTime.now());
+        alert.setRead(false);
+        alertRepository.save(alert);
+    }
+}package com.example.magazyn.service;
 
 import com.example.magazyn.dto.AuthRequest;
 import com.example.magazyn.dto.AuthResponse;
@@ -1532,21 +1792,19 @@ public class LocationService {
     }
 }package com.example.magazyn.service;
 
-import com.example.magazyn.dto.CreateProductRequest;
-import com.example.magazyn.dto.StockItemLocationDto;
+import com.example.magazyn.dto.*;
 import com.example.magazyn.entity.Category;
 import com.example.magazyn.entity.Company;
 import com.example.magazyn.entity.Product;
 import com.example.magazyn.entity.User;
-import com.example.magazyn.repository.CategoryRepository;
-import com.example.magazyn.repository.LocationRepository;
-import com.example.magazyn.repository.ProductRepository;
-import com.example.magazyn.repository.StockItemRepository;
+import com.example.magazyn.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -1559,6 +1817,7 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
     private final StockItemRepository stockItemRepository;
+    private final StockMovementRepository stockMovementRepository;
 
 
     @Transactional
@@ -1584,6 +1843,46 @@ public class ProductService {
                 }
             }
             product.setCategories(categories);
+        }
+
+        return productRepository.save(product);
+    }
+
+    @Transactional
+    public Product updateProduct(Long productId, UpdateProductRequest request, User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Produkt o ID " + productId + " nie został znaleziony."));
+
+        if (!product.getCompany().getId().equals(company.getId())) {
+            throw new SecurityException("Brak uprawnień do edycji tego produktu.");
+        }
+
+        if (request.getName() != null) {
+            product.setName(request.getName());
+        }
+        if (request.getDimensions() != null) {
+            product.setDimensions(request.getDimensions());
+        }
+
+        if (request.getCategoryIds() != null) {
+            product.getCategories().clear();
+            if (!request.getCategoryIds().isEmpty()) {
+                Set<Category> newCategories = new HashSet<>(categoryRepository.findAllById(request.getCategoryIds()));
+                if (newCategories.size() != request.getCategoryIds().size()) {
+                    throw new EntityNotFoundException("Nie znaleziono jednej lub więcej kategorii do przypisania.");
+                }
+                for (Category category : newCategories) {
+                    if (!category.getCompany().getId().equals(company.getId())) {
+                        throw new SecurityException("Brak uprawnień do przypisania produktu do kategorii innej firmy.");
+                    }
+                }
+                product.setCategories(newCategories);
+            }
         }
 
         return productRepository.save(product);
@@ -1620,6 +1919,42 @@ public class ProductService {
                 .product(product)
                 .locationNames(locationNames)
                 .quantity(totalQuantity != null ? totalQuantity : 0)
+                .build();
+    }
+
+    @Transactional()
+    public BestSellingProductsReportDto getTopSellingProductsLastMonth(User user) {
+        Company company = user.getCompany();
+        if (company == null) {
+            throw new IllegalStateException("Użytkownik nie jest przypisany do żadnej firmy.");
+        }
+
+        LocalDateTime oneMonthAgo = LocalDateTime.now().minusMonths(1);
+
+        List<Object[]> results = stockMovementRepository.findTopSellingProducts(
+                oneMonthAgo,
+                PageRequest.of(0, 20)
+        );
+
+        List<BestSellingItemDto> items = results.stream()
+                .map(row -> {
+                    Product product = (Product) row[0];
+                    Long count = (Long) row[1];
+
+                    if (!product.getCompany().getId().equals(company.getId())) {
+                        return null;
+                    }
+
+                    return BestSellingItemDto.builder()
+                            .product(product)
+                            .quantitySold(count)
+                            .build();
+                })
+                .filter(dto -> dto != null)
+                .collect(Collectors.toList());
+
+        return BestSellingProductsReportDto.builder()
+                .bestSellingProducts(items)
                 .build();
     }
 }

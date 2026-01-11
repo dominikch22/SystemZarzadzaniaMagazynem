@@ -25,6 +25,7 @@ public class StockMovement {
     @Column(name = "type", nullable = false)
     private MovementType type;
 
+
     public enum MovementType {
         INBOUND,
         OUTBOUND

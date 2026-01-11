@@ -1,5 +1,6 @@
 package com.example.magazyn.controller;
 
+import com.example.magazyn.dto.BestSellingProductsReportDto;
 import com.example.magazyn.dto.CreateProductRequest;
 import com.example.magazyn.dto.StockItemLocationDto;
 import com.example.magazyn.dto.UpdateProductRequest;
@@ -8,6 +9,7 @@ import com.example.magazyn.entity.User;
 import com.example.magazyn.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -51,5 +53,10 @@ public class ProductController {
         return ResponseEntity.ok(productService.getAllProductsWithStockDetails(user));
     }
 
+    @GetMapping("/best-selling")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<BestSellingProductsReportDto> getBestSellingReport(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(productService.getTopSellingProductsLastMonth(user));
+    }
 
 }
