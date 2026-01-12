@@ -41,7 +41,7 @@ public class AlertController {
     }
 
     @PostMapping("/generate")
-    @PreAuthorize("hasRole('ADMIN')")
+    //@PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> forceGenerateAlerts(@AuthenticationPrincipal User user) {
         alertService.checkAndGenerateAllAlerts();
         return ResponseEntity.accepted().build();
