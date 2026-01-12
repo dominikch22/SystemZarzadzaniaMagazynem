@@ -17,7 +17,7 @@ public class AlertController {
 
     private final AlertService alertService;
 
-    @GetMapping
+    @GetMapping("/get")
     public ResponseEntity<List<Alert>> getUnreadAlerts(@AuthenticationPrincipal User user) {
         if (user.getCompany() == null) {
             return ResponseEntity.ok(List.of());
