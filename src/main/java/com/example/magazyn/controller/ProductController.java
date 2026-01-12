@@ -9,7 +9,6 @@ import com.example.magazyn.entity.User;
 import com.example.magazyn.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -54,7 +53,6 @@ public class ProductController {
     }
 
     @GetMapping("/best-selling")
-    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<BestSellingProductsReportDto> getBestSellingReport(@AuthenticationPrincipal User user) {
         return ResponseEntity.ok(productService.getTopSellingProductsLastMonth(user));
     }
